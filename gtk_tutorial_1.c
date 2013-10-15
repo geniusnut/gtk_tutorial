@@ -8,6 +8,8 @@ typedef struct _CustomData {
     GstElement* m_pAudioSink;
     GstElement*	m_pVideoSink;
 
+    GtkWidget*	window;
+    guintptr 	window_handle;
     GtkWidget*	slider;
     gulong 	slider_update_signal_id;
     GtkWidget*	label_duration;
@@ -26,19 +28,18 @@ typedef struct _CustomData {
         (guint) ((((GstClockTime)(t)) / GST_SECOND) % 60) : 99
         
 static gboolean handle_message(GstBus* bus, GstMessage* msg, CustomData* data);
-
-static void realize_cb(GtkWidget *widget, CustomData *data)
+static gboolean BuildPipeline(char* uri, CustomData* data);
+ void realize_cb(GtkWidget *widget, CustomData *data)
 {
     GdkWindow *window = gtk_widget_get_window(widget);
-    guintptr window_handle;
 
     if (!gdk_window_ensure_native(window))
 	g_error("couldn't create native window needed for GstVideoOverlay");
-    window_handle = GDK_WINDOW_XID(window);
-    g_print("window_handle = %d\n",window_handle);
+    data->window_handle = GDK_WINDOW_XID(window);
+//    g_print("window_handle = %d\n",data->window_handle);
 
-    gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(data->m_pPipeline), window_handle);
-    gst_video_overlay_expose(GST_VIDEO_OVERLAY(data->m_pPipeline));
+    gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(data->m_pPipeline), data->window_handle);
+ //   gst_video_overlay_expose(GST_VIDEO_OVERLAY(data->m_pPipeline));
 }
 
 static void pause_cb(GtkButton *button, CustomData* data)
@@ -56,6 +57,35 @@ static void play_cb(GtkButton *button, CustomData* data)
 static void stop_cb(GtkButton *button, CustomData* data)
 {
     gst_element_set_state (data->m_pPipeline, GST_STATE_NULL);
+}
+static void open_file(char* uri, CustomData* data)
+{
+    if (data->m_pPipeline != NULL)
+    {
+	gst_element_set_state(data->m_pPipeline, GST_STATE_NULL);
+	gst_object_unref(data->m_pPipeline);
+    }
+    data->duration = GST_CLOCK_TIME_NONE;
+    BuildPipeline(uri, data);
+    gst_element_set_state(data->m_pPipeline, GST_STATE_PLAYING);
+    gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(data->m_pPipeline), data->window_handle);
+}
+static void on_open_clicked(GtkButton *button, CustomData* data)
+{
+    GtkWidget *dialog;
+    dialog = gtk_file_chooser_dialog_new("Open File",
+	    				GTK_WINDOW(data->window),
+					GTK_FILE_CHOOSER_ACTION_OPEN,
+					GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
+					GTK_STOCK_OPEN, GTK_RESPONSE_ACCEPT, NULL);
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT)
+    {
+	char *uri = gtk_file_chooser_get_uri(GTK_FILE_CHOOSER(dialog));
+	//g_print("uri = %s", uri);
+	open_file(uri, data);
+	g_free(uri);
+    }
+    gtk_widget_destroy(dialog);
 }
 static void delete_event_cb(GtkWidget *widget, GdkEvent *event, CustomData* data)
 {
@@ -95,7 +125,6 @@ static gboolean refresh_ui(CustomData* data)
 	str_position = g_strdup_printf("position : %u:%02u:%02u", FORMAT_TIME(position) );
 	gtk_label_set_text(GTK_LABEL(data->label_position), str_position);
     }
-
     return TRUE;
 }
 static gboolean handle_message(GstBus *bus, GstMessage* message, CustomData* data)
@@ -131,8 +160,8 @@ static gboolean BuildPipeline(char *uri, CustomData *data)
     }
     g_object_set(data->m_pPipeline, "uri", uri, NULL);
 
-    data->m_pAudioSink = gst_element_factory_make("osssink", "audiosink");
-    g_object_set(data->m_pPipeline, "audio-sink", data->m_pAudioSink, NULL);
+ //   data->m_pAudioSink = gst_element_factory_make("osssink", "audiosink");
+   // g_object_set(data->m_pPipeline, "audio-sink", data->m_pAudioSink, NULL);
 
     data->m_pVideoSink = gst_element_factory_make("ximagesink", "videosink");
     g_object_set(data->m_pPipeline, "video-sink", data->m_pVideoSink, NULL);
@@ -149,7 +178,7 @@ int main(int argc, char **argv)
     CustomData data;
     GstStateChangeReturn ret;
 
-    GtkWidget *window;
+ //   GtkWidget *window;
     GtkWidget *video_window;
     GtkWidget *mainbox, *Hbox;
     GtkWidget *controls;
@@ -166,9 +195,9 @@ int main(int argc, char **argv)
     printf("buildpipeline()\n");
 
 //    BuildPipeline("file:///home/yw07/Videos/samples/720x384.mp4", &data);
-    window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    g_signal_connect(G_OBJECT(window), "delete-event", G_CALLBACK(delete_event_cb), &data);
-    gtk_window_set_default_size(GTK_WINDOW(window),  800, 600);
+    data.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    g_signal_connect(G_OBJECT(data.window), "delete-event", G_CALLBACK(delete_event_cb), &data);
+    gtk_window_set_default_size(GTK_WINDOW(data.window),  800, 600);
     Hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
     video_window = gtk_drawing_area_new();
     gtk_widget_set_double_buffered(video_window, FALSE);
@@ -186,7 +215,7 @@ int main(int argc, char **argv)
     btn_play = gtk_button_new_from_stock(GTK_STOCK_MEDIA_PLAY);
     g_signal_connect (G_OBJECT(btn_play), "clicked", G_CALLBACK(play_cb), &data);
     btn_open = gtk_button_new_from_stock(GTK_STOCK_OPEN);
-//    g_signal_connect (G_OBJECT(btn_stop), "clicked", G_CALLBACK(on_open_clicked), NULL);
+    g_signal_connect (G_OBJECT(btn_open), "clicked", G_CALLBACK(on_open_clicked), &data);
     Hbox2 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
     data.label_position = gtk_label_new("position: --:--");
     data.label_duration = gtk_label_new("duration: --:--");
@@ -204,9 +233,9 @@ int main(int argc, char **argv)
     gtk_box_pack_start( GTK_BOX(mainbox), Hbox, TRUE, TRUE, 0);
     gtk_box_pack_start( GTK_BOX(mainbox), controls, FALSE, FALSE, 0);
     gtk_box_pack_start( GTK_BOX(mainbox), Hbox2, FALSE, FALSE, 0);
-    gtk_container_add(GTK_CONTAINER (window), mainbox); 
+    gtk_container_add(GTK_CONTAINER (data.window), mainbox); 
 
-    gtk_widget_show_all(window);
+    gtk_widget_show_all(data.window);
  //  g_usleep(1000000000);
     
     //BuildPipeline("file:///home/yw07/Videos/samples/720x384.mp4", &data);
