@@ -37,7 +37,7 @@ static void pause_cb(GtkButton *button, CustomData* data)
 }
 static void play_cb(GtkButton *button, CustomData* data)
 {
-    gst_element_set_state (data->m_pPipeline, GST_STATE_PLAYING);
+ //   gst_element_set_state (data->m_pPipeline, GST_STATE_PLAYING);
 }
 
 static void stop_cb(GtkButton *button, CustomData* data)
@@ -132,7 +132,9 @@ int main(int argc, char **argv)
     gtk_init(&argc, &argv);
     gst_init(&argc, &argv);
     memset(&data, 0, sizeof(data));
-
+    data.duration = GST_CLOCK_TIME_NONE;
+    BuildPipeline("/usr/yw07/Home/test/720x384.mp4", &data);
+    printf("buildpipeline()\n");
 
     window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_default_size(GTK_WINDOW(window), 800, 600);
@@ -145,16 +147,19 @@ int main(int argc, char **argv)
     gtk_scale_set_draw_value(GTK_SCALE(data.slider), 0);
     data.slider_update_signal_id = g_signal_connect(G_OBJECT(data.slider), "value-changed", G_CALLBACK(slider_cb), &data);
 
-
+    printf("set slider \n");
     btn_stop = gtk_button_new_from_stock(GTK_STOCK_MEDIA_STOP);
-    g_signal_connect (G_OBJECT(btn_stop), "clicked", G_CALLBACK(stop_cb), NULL);
+    g_signal_connect (G_OBJECT(btn_stop), "clicked", G_CALLBACK(stop_cb), &data);
+    printf("set stop signal clicks\n");
     btn_pause = gtk_button_new_from_stock(GTK_STOCK_MEDIA_PAUSE);
-    g_signal_connect (G_OBJECT(btn_pause), "clicked", G_CALLBACK(pause_cb), NULL);
+    g_signal_connect (G_OBJECT(btn_pause), "clicked", G_CALLBACK(pause_cb), &data);
+    printf("set pause signal clicks\n");
     btn_play = gtk_button_new_from_stock(GTK_STOCK_MEDIA_PLAY);
-    g_signal_connect (G_OBJECT(btn_play), "clicked", G_CALLBACK(play_cb), NULL);
-    btn_open = gtk_button_new_from_stock(GTK_STOCK_OPEN);
+    g_signal_connect (G_OBJECT(btn_play), "clicked", G_CALLBACK(play_cb), &data);
+    printf("set play signal clicks\n");
+ //   btn_open = gtk_button_new_from_stock(GTK_STOCK_OPEN);
 //    g_signal_connect (G_OBJECT(btn_stop), "clicked", G_CALLBACK(on_open_clicked), NULL);
-
+    printf("set signal clicks");
     Hbox2 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
     label_position = gtk_label_new_with_mnemonic("position: --:--");
     label_duration = gtk_label_new_with_mnemonic("duration: --:--");
@@ -164,9 +169,10 @@ int main(int argc, char **argv)
     gtk_box_pack_start( GTK_BOX (controls), btn_stop, 0, 0, 0);
     gtk_box_pack_start( GTK_BOX (controls), btn_play, 0, 0, 0);
     gtk_box_pack_start( GTK_BOX (controls), btn_pause, 0, 0, 0);
-    gtk_box_pack_start( GTK_BOX (controls), btn_open, 0, 0, 0);
+   // gtk_box_pack_start( GTK_BOX (controls), btn_open, 0, 0, 0);
     gtk_box_pack_start( GTK_BOX (controls), slider, 1, 1, 2);
 
+    printf("pack controls \n");
     gtk_box_pack_start( GTK_BOX(Hbox), video_window, 1, 1, 0);
     mainbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_box_pack_start( GTK_BOX(mainbox), Hbox, 1, 1, 0);
@@ -175,7 +181,7 @@ int main(int argc, char **argv)
     gtk_container_add(GTK_CONTAINER (window), mainbox); 
 
     gtk_widget_show_all(window);
-    BuildPipeline("/usr/yw07/Home/Video/samples/720x384.mp4", &data);
+    printf("show widgets!\n");
     ret = gst_element_set_state(data.m_pPipeline, GST_STATE_PLAYING);
     if (ret == GST_STATE_CHANGE_FAILURE)
     {
@@ -184,6 +190,7 @@ int main(int argc, char **argv)
 	return -1;
     }
     g_timeout_add_seconds(1, (GSourceFunc)refresh_ui, &data);
+    printf("gtk_main()\n");
     gtk_main();
     return 0;
 }
