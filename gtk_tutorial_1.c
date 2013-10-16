@@ -1,5 +1,7 @@
 #include <gtk/gtk.h>
 #include <gst/gst.h>
+#include <gst/video/videooverlay.h>
+#include <gdk/gdkx.h>
 typedef struct _CustomData {
     GstElement* m_pPipeline;
     GstElement* m_pAudioSink;
@@ -8,19 +10,23 @@ typedef struct _CustomData {
     GtkWidget*	slider;
     gulong 	slider_update_signal_id;
 
-    GstState*	state;
+    GstState	state;
     guint64	duration;
     guint64	position;
 } CustomData;
 
-static bool handle_message(GstBus* bus, GstMessage* msg, CustomData* data);
+static gboolean handle_message(GstBus* bus, GstMessage* msg, CustomData* data);
 
-static void (GtkWidget *widget, CustomData *data)
+static void realize_cb(GtkWidget *widget, CustomData *data)
 {
-    GdkWindow *window = gtk_widget_get_window(wigdet);
+    GdkWindow *window = gtk_widget_get_window(widget);
     guintptr window_handle;
 
     if (!gdk_window_ensure_native(window))
+	g_error("couldn't create native window needed for GstVideoOverlay");
+    window_handle = GDK_WINDOW_XID(window);
+
+    gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(data->m_pPipeline), window_handle);
 }
 static void pause_cb(GtkButton *button, CustomData* data)
 {
@@ -43,31 +49,31 @@ static void slider_cb(GtkRange *range, CustomData *data)
     gdouble value = gtk_range_get_value(GTK_RANGE(data->slider));
     gst_element_seek_simple (data->m_pPipeline, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE, (gint64)(value * GST_SECOND));
 }
-static bool refresh_ui(CustomData* data)
+static gboolean refresh_ui(CustomData* data)
 {
     GstFormat fmt = GST_FORMAT_TIME;
     guint64 position;
     guint64 duration;
     if (data->state < GST_STATE_PLAYING)
-	return true;
+	return TRUE;
 
     if (!GST_CLOCK_TIME_IS_VALID(data->duration))
     {
-	if (!gst_element_query_duration (data->m_pPipeline, &fmt, &data->duration)){
+	if (!gst_element_query_duration (data->m_pPipeline, fmt, &data->duration)){
 	    g_printerr ("Could not query current duration.\n");
     	}else{
 	gtk_range_set_range(GTK_RANGE(data->slider), 0, (gdouble)data->duration / GST_SECOND);
 	}
     }
 
-    if (gst_element_query_positon (data->m_pPipeline, &fmt, &position))
+    if (gst_element_query_position (data->m_pPipeline, fmt, &position))
     {
 	g_signal_handler_block (data->slider, data->slider_update_signal_id);
 	gtk_range_set_value(GTK_RANGE(data->slider), (gdouble) position/GST_SECOND);
 	g_signal_handler_unblock (data->slider, data->slider_update_signal_id);
     }
 }
-static bool handle_message(GstBus *bus, GstMessage* message, CustomData* data)
+static gboolean handle_message(GstBus *bus, GstMessage* message, CustomData* data)
 {
     switch (GST_MESSAGE_TYPE(message))
     {
@@ -85,22 +91,22 @@ static bool handle_message(GstBus *bus, GstMessage* message, CustomData* data)
     }
 
 }
-static bool BuildPipeline(char *uri, CustomData *data)
+static gboolean BuildPipeline(char *uri, CustomData *data)
 {
     GstBus* bus;
     data->m_pPipeline = gst_element_factory_make("playbin", "pipeline");
-    if (m_pPipeline == NULL)
+    if (data->m_pPipeline == NULL)
     {
 	printf("create pipeline failed!\n");
 	return FALSE;
     }
-    g_object_set(m_pPipeline, "uri", uri, NULL);
+    g_object_set(data->m_pPipeline, "uri", uri, NULL);
 
     data->m_pAudioSink = gst_element_factory_make("waveformsink", "audiosink");
-    g_object_set(m_pPipeline, "audio-sink", m_pAudioSink, NULL);
+    g_object_set(data->m_pPipeline, "audio-sink", data->m_pAudioSink, NULL);
 
-    data->m_pVideoSink = gst_element_factory_make("cluttersink", "videosink");
-    g_object_set(m_pPipeline, "video-sink", m_pVideoSink, NULL);
+    data->m_pVideoSink = gst_element_factory_make("ximagesink", "videosink");
+    g_object_set(data->m_pPipeline, "video-sink", data->m_pVideoSink, NULL);
 
     bus = gst_pipeline_get_bus(data->m_pPipeline);
     gst_bus_add_watch (bus, (GstBusFunc)handle_message, &data);
@@ -132,7 +138,7 @@ int main(int argc, char **argv)
     gtk_window_set_default_size(GTK_WINDOW(window), 800, 600);
     Hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
     video_window = gtk_drawing_area_new();
-    g_signal_connect (video_window, "realize", G_CALLBACK(realize_cb), data);
+    g_signal_connect (video_window, "realize", G_CALLBACK(realize_cb), &data);
 //    g_signal_connect (video_window, "expose_event", G_CALLBACK(expose_cb), data);
     controls = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
     data.slider = gtk_hscale_new_with_range(0, 100, 1);
@@ -169,7 +175,7 @@ int main(int argc, char **argv)
     gtk_container_add(GTK_CONTAINER (window), mainbox); 
 
     gtk_widget_show_all(window);
-    BuildPipeline("/usr/yw07/Home/Video/samples/720x384.mp4", data);
+    BuildPipeline("/usr/yw07/Home/Video/samples/720x384.mp4", &data);
     ret = gst_element_set_state(data.m_pPipeline, GST_STATE_PLAYING);
     if (ret == GST_STATE_CHANGE_FAILURE)
     {
